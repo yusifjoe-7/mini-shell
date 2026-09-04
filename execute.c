@@ -11,13 +11,15 @@
 #define MAX_OP_TOKENS 32
 #define MAX_COMMANDS 32
 
-/* Runs a single command (no pipes). Returns its exit code. */
-int the_execution(char **args) {
+
+// spilting if thir is a pipe or not ,
+//not so clean but easer for now
+
+void the_execution(char **args) {
     if (strcmp(args[0], "cd") == 0) {
         if (chdir(args[1]) == -1) {
             perror("cd failed");
         }
-        return 0;
     }
 
     pid_t pid = fork();
@@ -29,10 +31,10 @@ int the_execution(char **args) {
     } else if (pid > 0) {
         int status;
         waitpid(pid, &status, 0);
-        return WEXITSTATUS(status);
+        printf("\nexit code: \033[38;2;130;168;216m%d\033[0m\n", status);
     } else {
         perror("fork failed");
-        return -1;
+        _exit(-1);
     }
 }
 
@@ -44,10 +46,12 @@ int the_execution(char **args) {
  * Example: ls -l )) grep foo )) wc -l
  *   -> 3 commands, 2 pipes
  */
+
+ 
 void execute_pipeline(char **args) {
     int num_cmds = 1;
     for (int i = 0; args[i]; i++) {
-        if (strcmp(args[i], "))") == 0) num_cmds++;
+        if (strcmp(args[i], "))") == 0) num_cmds++; // count the commands
     }
 
     if (num_cmds > MAX_COMMANDS) {
@@ -55,9 +59,10 @@ void execute_pipeline(char **args) {
         return;
     }
 
-    /* Split args into MAX_COMMANDS command arrays, each MAX_OP_TOKENS long */
+    // Split args into MAX_COMMANDS command arrays, each MAX_OP_TOKENS long
     char *commands[MAX_COMMANDS][MAX_OP_TOKENS];
     int cmd_idx = 0, tok_idx = 0;
+
 
     for (int i = 0; args[i]; i++) {
         if (strcmp(args[i], "))") == 0) {
@@ -76,7 +81,7 @@ void execute_pipeline(char **args) {
             commands[cmd_idx][tok_idx++] = args[i];
         }
     }
-    commands[cmd_idx][tok_idx] = NULL; /* terminate the last command */
+    commands[cmd_idx][tok_idx] = NULL; //last command
 
     int num_pipes = num_cmds - 1;
     int pipefds[MAX_COMMANDS][2];
@@ -94,17 +99,15 @@ void execute_pipeline(char **args) {
         pid_t pid = fork();
 
         if (pid == 0) {
-            /* child: read from previous pipe (if any) */
+            // child: read from previous pipe if there is
             if (i > 0) {
                 dup2(pipefds[i - 1][0], STDIN_FILENO);
             }
-            /* child: write to next pipe (if any) */
+            // child: write to next pipe if there is
             if (i < num_cmds - 1) {
                 dup2(pipefds[i][1], STDOUT_FILENO);
             }
 
-            /* every fd for every pipe must be closed in the child
-               once it's been duped, otherwise readers never see EOF */
             for (int j = 0; j < num_pipes; j++) {
                 close(pipefds[j][0]);
                 close(pipefds[j][1]);
@@ -121,7 +124,7 @@ void execute_pipeline(char **args) {
         pids[i] = pid;
     }
 
-    /* parent must close every pipe fd too, or children never get EOF */
+    // parent close 
     for (int j = 0; j < num_pipes; j++) {
         close(pipefds[j][0]);
         close(pipefds[j][1]);
@@ -132,6 +135,9 @@ void execute_pipeline(char **args) {
         waitpid(pids[i], &status, 0);
     }
 }
+
+
+
 
 void main_execute(char **args) {
     if (strcmp(args[0], "cd") == 0) {
@@ -150,8 +156,8 @@ void main_execute(char **args) {
     }
 
     if (!has_pipe) {
-        int status = the_execution(args);
-        printf("\nexit code: \033[38;2;130;168;216m%d\033[0m\n", status);
+        the_execution(args);
+        
     } else {
         execute_pipeline(args);
     }
